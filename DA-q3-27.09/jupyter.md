@@ -1,5 +1,5 @@
 # docker-compose.yml
-"""
+```
 services:
   lab:
     image: jupyter/scipy-notebook:latest
@@ -14,4 +14,4 @@ services:
        
     restart: unless-stopped
     
-"""
+```
