@@ -1,0 +1,37 @@
+# docker-compose.yml
+# Назначение: поднять RStudio Server в контейнере и монтировать вашу рабочую папку.
+# Основано на официальных образах Rocker (rstudio/tidyverse/verse).
+
+services:
+  rstudio:
+    # Базовый образ с RStudio Server. 
+    # Тег ":4" закрепляет линейку R 4.x (стабильнее, чем "latest").
+    image: rocker/rstudio:4
+
+    container_name: rstudio
+
+    # - "127.0.0.1:8787:8787"
+    # http://localhost:8787/
+    ports:
+      - "8787:8787"
+
+    environment:
+      # логин по умолчанию — 'rstudio').
+      - PASSWORD=lab
+      - USERID=1000
+      - GROUPID=1000
+
+      # Часовой пояс для корректных времён в логах/сеансах.
+      - TZ=Europe/Moscow
+
+    volumes:
+      # рабочая директория на хосте -> в контейнер по пути ~/workspace.
+      # В RStudio она будет видна как папка 'workspace' в домашнем каталоге.
+      - /home/q10sn1k/R:/home/rstudio/workspace
+
+      # Отдельный том для конфигурации RStudio (~/.config/rstudio), чтобы сохранялись настройки IDE.
+      # Папка на хосте будет создана при первом запуске.
+      - /home/q10sn1k/.rstudio_config:/home/rstudio/.config/rstudio
+
+    # По умолчанию контейнер запускается от root, как того требует RStudio Server.
+    restart: unless-stopped
