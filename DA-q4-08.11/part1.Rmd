@@ -1,0 +1,264 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# Загрузка датасета MoviesOnStreamingPlatforms.csv и вывод общей информации
+df <- read.csv("MoviesOnStreamingPlatforms.csv", header = TRUE)
+# Выведем структуру данных, чтобы понять типы столбцов и наличие пропусков
+str(df)
+# Выведем первые несколько строк, чтобы взглянуть на содержимое таблицы
+head(df, 5)
+```
+
+
+```{r}
+# Выведем первые несколько строк, чтобы взглянуть на содержимое таблицы
+head(df, 5)
+```
+
+```{r}
+
+
+# Удаляем ненужные столбцы: технический индекс (X), ID и Type
+df <- df[, !(names(df) %in% c("X", "ID", "Type"))]
+
+
+# Обработка столбца Rotten Tomatoes (рейтинг фильмов в формате "XX/100"):
+# Удалим суффикс "/100" и преобразуем в числовой тип.
+df$Rotten.Tomatoes <- gsub("/100", "", df$Rotten.Tomatoes)       # убираем подстроку "/100"
+df$Rotten.Tomatoes <- as.numeric(df$Rotten.Tomatoes)             # переводим строковые числа в тип numeric
+
+# Обработка пропущенных значений Rotten Tomatoes:
+# Посчитаем, сколько NA возникло после преобразования (фильмы без рейтинга).
+sum(is.na(df$Rotten.Tomatoes))
+# Заменим пропуски в Rotten.Tomatoes на медианное значение рейтинга по всем фильмам:
+median_rating <- median(df$Rotten.Tomatoes, na.rm = TRUE)
+df$Rotten.Tomatoes[is.na(df$Rotten.Tomatoes)] <- median_rating
+
+# Обработка столбца Age (возрастной рейтинг аудитории):
+# В данных много пропусков в Age (значение NA или пустая строка). Заменим их на "Unknown".
+# Сначала убедимся, что столбец не фактор (чтобы удобно присвоить "Unknown").
+if(is.factor(df$Age)) {
+  df$Age <- as.character(df$Age)
+}
+df$Age[is.na(df$Age) | df$Age == ""] <- "Unknown"
+df$Age <- as.factor(df$Age)  # приведем к фактору для удобства анализа (категориальные значения)
+
+# Проверим итоговую структуру данных после очистки
+str(df)
+```
+
+```{r}
+# ========================================
+# Разведочный анализ данных (EDA)
+# ========================================
+
+# Количество фильмов на каждой платформе (Netflix, Hulu, Prime Video, Disney+)
+platform_counts <- c(
+  Netflix    = sum(df$Netflix, na.rm = TRUE),
+  Hulu       = sum(df$Hulu, na.rm = TRUE),
+  "Prime Video" = sum(df$Prime.Video, na.rm = TRUE),
+  "Disney+"  = sum(df$Disney., na.rm = TRUE)
+)
+cat("Количество фильмов на платформах:", platform_counts, "\n")
+# Построим столбчатую диаграмму для наглядности
+barplot(platform_counts,
+        col = c("red","blue","green","gold"), 
+        main = "Число фильмов на каждой платформе",
+        ylab = "Количество фильмов")
+
+```
+
+```{r}
+# Выведем первые несколько строк, чтобы взглянуть на содержимое таблицы
+# Распределение фильмов по возрастным рейтингам (Age)
+age_counts <- sort(table(df$Age), decreasing = TRUE)
+cat("Распределение Age-рейтингов:\n")
+print(age_counts)
+barplot(age_counts,
+        col = "skyblue",
+        main = "Распределение фильмов по возрастному рейтингу",
+        xlab = "Возрастной рейтинг",
+        ylab = "Количество фильмов",
+        cex.names = 0.8)
+
+```
+
+```{r}
+# Распределение фильмов по годам выпуска.
+# Создадим столбец Decade (десятилетие выпуска) для группировки по десятилетиям.
+df$Decade <- (df$Year %/% 10) * 10  
+decade_counts <- table(df$Decade)
+decade_counts <- sort(decade_counts)  # отсортируем по возрастанию десятилетий (хронологически)
+cat("Количество фильмов по десятилетиям:\n")
+print(decade_counts)
+barplot(decade_counts,
+        col = "gray",
+        main = "Распределение фильмов по десятилетиям выпуска",
+        xlab = "Десятилетие",
+        ylab = "Количество фильмов")
+```
+
+```{r}
+# Распределение оценок качества (рейтинги Rotten Tomatoes)
+ratings <- df$Rotten.Tomatoes
+cat("Статистика рейтингов Rotten Tomatoes:\n")
+cat(" Мин:", min(ratings), 
+    "| Макс:", max(ratings), 
+    "| Средний:", mean(ratings), 
+    "| Медиана:", median(ratings), "\n")
+hist(ratings, 
+     breaks = 20, 
+     col = "orange", 
+     border = "black",
+     main = "Распределение оценок Rotten Tomatoes",
+     xlab = "Рейтинг (%)",
+     ylab = "Число фильмов")
+```
+
+```{r}
+
+# Пересечения между платформами – на скольких платформах одновременно доступен каждый фильм.
+# Посчитаем для каждого фильма число платформ (PlatformCount), на которых он представлен.
+df$PlatformCount <- df$Netflix + df$Hulu + df$Prime.Video + df$Disney.
+platform_count_dist <- table(df$PlatformCount)
+cat("Распределение по числу платформ:\n")
+print(platform_count_dist)
+barplot(platform_count_dist,
+        col = "purple",
+        main = "Распределение фильмов по охвату платформ",
+        xlab = "Число платформ, где есть фильм",
+        ylab = "Количество фильмов")
+```
+
+```{r}
+# ========================================
+# ABC-анализ и XYZ-анализ по охвату платформ
+# ========================================
+# ABC-анализ: разделим фильмы на категории A, B, C по числу платформ (охвату):
+A_count <- sum(df$PlatformCount >= 3)  # фильмы на 3 или 4 платформах
+B_count <- sum(df$PlatformCount == 2)  # фильмы на 2 платформах
+C_count <- sum(df$PlatformCount == 1)  # фильмы на 1 платформе
+
+# XYZ-анализ: разделим на категории X, Y, Z по "стабильности" охвата:
+X_count <- sum(df$PlatformCount == 4)             # на 4 платформах
+Y_count <- sum(df$PlatformCount %in% c(2, 3))      # на 2 или 3 платформах
+Z_count <- sum(df$PlatformCount == 1)             # на 1 платформе
+
+cat(sprintf("ABC-разбиение по охвату платформ:\n A: %d фильмов (3-4 платформы)\n B: %d фильмов (2 платформы)\n C: %d фильмов (1 платформа)\n",
+            A_count, B_count, C_count))
+```
+
+
+```{r}
+cat(sprintf("\nXYZ-разбиение по стабильности охвата:\n X: %d фильмов (на 4 платформах)\n Y: %d фильмов (на 2-3 платформах)\n Z: %d фильмов (на 1 платформе)\n\n",
+            X_count, Y_count, Z_count))
+```
+
+```{r}
+# Визуализируем распределение ABC и XYZ категорий для
+par(mfrow = c(1, 2))
+barplot(c(A_count, B_count, C_count),
+        names.arg = c("A (3-4 платформы)", "B (2 платформы)", "C (1 платформа)"),
+        col = c("#1f77b4","#ff7f0e","#2ca02c"),
+        main = "ABC-анализ (охват платформ)",
+        ylab = "Количество фильмов")
+barplot(c(X_count, Y_count, Z_count),
+        names.arg = c("X (4 платформы)", "Y (2-3 платформы)", "Z (1 платформа)"),
+        col = c("#9467bd","#8c564b","#e377c2"),
+        main = "XYZ-анализ (стабильность охвата)",
+        ylab = "Количество фильмов")
+```
+
+```{r}
+# RFM-анализ обычно используется для сегментации клиентов, 
+# применим идею к фильмам с точки зрения:
+# R (Recency) - насколько "свежий" фильм (год выпуска),
+# F (Frequency) - "частота" или охват по платформам (на скольких платформах фильм доступен),
+# M (Monetary) - качество/ценность фильма (рейтинг Rotten Tomatoes).
+#
+# Recency (давность выхода фильма): разобьем годы выпуска на 3 группы (старые, средние, новые фильмы).
+quantiles_year <- quantile(df$Year, probs = c(0, 1/3, 2/3, 1))
+df$R_segment <- cut(df$Year, breaks = quantiles_year, include.lowest = TRUE,
+                    labels = c("Old","Medium","New"))
+# Frequency (охват по платформам): Low = на 1 платформе, Medium = на 2, High = на 3-4 платформах.
+df$F_segment <- ifelse(df$PlatformCount >= 3, "High",
+                       ifelse(df$PlatformCount == 2, "Medium", "Low"))
+df$F_segment <- factor(df$F_segment, levels = c("Low","Medium","High"))
+# Monetary (рейтинг): разобьем рейтинг Rotten Tomatoes на 3 группы (Low, Medium, High) по триадам
+quantiles_rating <- quantile(df$Rotten.Tomatoes, probs = c(0, 1/3, 2/3, 1))
+df$M_segment <- cut(df$Rotten.Tomatoes, breaks = quantiles_rating, include.lowest = TRUE,
+                    labels = c("Low","Medium","High"))
+
+# Посмотрим количество фильмов в каждом сегменте R, F, M:
+cat("Recency распределение:\n")
+print(sort(table(df$R_segment), decreasing = TRUE))
+cat("Frequency распределение:\n")
+print(sort(table(df$F_segment), decreasing = TRUE))
+cat("Monetary распределение:\n")
+print(sort(table(df$M_segment), decreasing = TRUE))
+```
+
+```{r}
+# Выделим конкретные сегменты фильмов
+# Лучшие (BEST) фильмы: новые, с широким охватом и высоким рейтингом (R="New", F="High", M="High").
+best_segment <- subset(df, R_segment == "New" & F_segment == "High" & M_segment == "High")
+# Худшие (WORST) фильмы: старые, с узким охватом и низким рейтингом (R="Old", F="Low", M="Low").
+worst_segment <- subset(df, R_segment == "Old" & F_segment == "Low" & M_segment == "Low")
+
+cat("Фильмов в сегменте BEST (New, High, High):", nrow(best_segment), "\n")
+cat("Фильмов в сегменте WORST (Old, Low, Low):", nrow(worst_segment), "\n")
+# Выведем примеры названий фильмов из каждого сегмента:
+cat("Примеры лучших фильмов:", paste(head(best_segment$Title, 3), collapse = ", "), "\n")
+cat("Примеры худших фильмов:", paste(head(worst_segment$Title, 3), collapse = ", "), "\n")
+```
+
+
+```{r}
+# ========================================
+# Построим единый дашборд 2x3 с шестью графиками, отражающими основные аспекты:
+par(mfrow = c(2, 3), oma = c(0, 0, 2, 0))  # 2 ряда, 3 столбца графиков, внешний отступ сверху для заголовка
+# Число фильмов на каждой платформе
+barplot(platform_counts,
+        col = c("red","blue","green","gold"),
+        main = "Фильмы на платформе",
+        ylab = "Кол-во фильмов")
+# Распределение по возрастным рейтингам
+barplot(age_counts,
+        col = "skyblue",
+        main = "Возрастной рейтинг",
+        ylab = "Кол-во фильмов",
+        cex.names = 0.8)
+# Распределение фильмов по десятилетиям выпуска
+barplot(decade_counts,
+        col = "gray",
+        main = "Годы выпуска (десятилетия)",
+        xlab = "Десятилетие",
+        ylab = "Кол-во фильмов")
+# Распределение рейтингов Rotten Tomatoes
+hist(df$Rotten.Tomatoes,
+     breaks = 20,
+     col = "orange",
+     border = "black",
+     main = "Рейтинги Rotten Tomatoes",
+     xlab = "Рейтинг (%)",
+     ylab = "Фильмов")
+# Распределение фильмов по охвату (скольких платформах)
+barplot(platform_count_dist,
+        col = "purple",
+        main = "Охват (платформ)",
+        xlab = "Кол-во платформ",
+        ylab = "Кол-во фильмов")
+# ABC-анализ категорий охвата
+barplot(c(A_count, B_count, C_count),
+        names.arg = c("A","B","C"),
+        col = c("#1f77b4","#ff7f0e","#2ca02c"),
+        main = "ABC категории",
+        ylab = "Кол-во фильмов")
+# Добавим общий заголовок для всего дашборда
+mtext("Обзорный дашборд по анализу фильмов на платформах", outer = TRUE, cex = 1.2)
+par(mfrow = c(1, 1))  # сброс раскладки графиков
+```
+
